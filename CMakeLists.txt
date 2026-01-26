@@ -77,6 +77,7 @@ set(SOURCES
     src/server.c
     src/websocket.c
     src/terminal.c
+    src/session.c
 )
 
 # Header files (for IDEs)
@@ -84,6 +85,7 @@ set(HEADERS
     include/server.h
     include/websocket.h
     include/terminal.h
+    include/session.h
 )
 
 # Executable
