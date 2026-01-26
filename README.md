@@ -5,9 +5,9 @@ Stream tmux sessions to your browser. Access your terminal from any device.
 ## Quick Start
 
 ```bash
-./install.sh    # Install dependencies
-./build.sh      # Build
-./build/oatmux  # Run (interactive session picker)
+./install.sh       # Install dependencies
+./compile.sh       # Build
+./build/oatmux     # Run (interactive session picker)
 ```
 
 Open `http://localhost:8080` in your browser.
@@ -28,10 +28,10 @@ Options:
 ## Examples
 
 ```bash
-./build/oatmux                  # Interactive picker
-./build/oatmux -s dev -p 3000   # Stream "dev" on port 3000
-./build/oatmux -b 127.0.0.1     # Local only
-./build/oatmux -l               # List sessions
+oatmux                    # Interactive picker
+oatmux -s dev -p 3000     # Stream "dev" on port 3000
+oatmux -b 127.0.0.1       # Local only
+oatmux -l                 # List sessions
 ```
 
 ## Controls
@@ -41,11 +41,13 @@ Options:
 - `Enter` or `1-9` - Select
 - `q` or `Esc` - Quit
 
-## Build Options
+## Build
 
 ```bash
-./build.sh Release   # Optimized (default)
-./build.sh Debug     # With sanitizers
+./compile.sh             # Release build (default)
+./compile.sh Debug       # Debug with sanitizers
+./compile.sh install     # Install to /usr/local/bin
+./compile.sh clean       # Clean build directory
 ```
 
 ## Requirements

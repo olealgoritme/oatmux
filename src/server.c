@@ -370,10 +370,9 @@ int server_start(server_config_t *config) {
     int opt = 1;
     setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-    // Bind
+    // Bind - try multiple ports if needed
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(config->port);
 
     if (config->bind_addr && strlen(config->bind_addr) > 0) {
         inet_pton(AF_INET, config->bind_addr, &server_addr.sin_addr);
@@ -381,8 +380,35 @@ int server_start(server_config_t *config) {
         server_addr.sin_addr.s_addr = INADDR_ANY;
     }
 
-    if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("bind");
+    int bound = 0;
+    int try_port = config->port;
+    int max_tries = 10;
+
+    for (int i = 0; i < max_tries; i++) {
+        server_addr.sin_port = htons(try_port);
+
+        if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0) {
+            bound = 1;
+            config->port = try_port;  // Update with actual port
+            break;
+        }
+
+        if (errno != EADDRINUSE) {
+            perror("bind");
+            close(server_socket);
+            return -1;
+        }
+
+        // Port in use, try next
+        if (i == 0) {
+            printf("Port %d in use, trying alternatives...\n", try_port);
+        }
+        try_port++;
+    }
+
+    if (!bound) {
+        fprintf(stderr, "Could not find available port (tried %d-%d)\n",
+                config->port, try_port - 1);
         close(server_socket);
         return -1;
     }
@@ -394,11 +420,16 @@ int server_start(server_config_t *config) {
         return -1;
     }
 
-    printf("Server started on http://%s:%d\n",
+    printf("\n");
+    printf("  \033[1m🌾 oatmux\033[0m\n");
+    printf("  ─────────────────────────────────\n");
+    printf("  Session:  \033[32m%s\033[0m\n", config->tmux_session);
+    printf("  URL:      \033[36mhttp://%s:%d\033[0m\n",
            config->bind_addr ? config->bind_addr : "0.0.0.0",
            config->port);
-    printf("tmux session: %s\n", config->tmux_session);
-    printf("Press Ctrl+C to stop\n\n");
+    printf("  ─────────────────────────────────\n");
+    printf("  Press \033[1mCtrl+C\033[0m to stop\n");
+    printf("\n");
 
     // Accept loop
     while (server_running) {

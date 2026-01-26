@@ -101,17 +101,6 @@ int main(int argc, char *argv[]) {
         config.tmux_session = allocated_session;
     }
 
-    printf("\n");
-    printf("  \033[1m🌾 oatmux\033[0m\n");
-    printf("  ─────────────────────────────────\n");
-    printf("  Session:  \033[32m%s\033[0m\n", config.tmux_session);
-    printf("  URL:      \033[36mhttp://%s:%d\033[0m\n",
-           config.bind_addr ? config.bind_addr : "0.0.0.0",
-           config.port);
-    printf("  ─────────────────────────────────\n");
-    printf("  Press \033[1mCtrl+C\033[0m to stop\n");
-    printf("\n");
-
     int result = server_start(&config);
 
     if (allocated_session) {
