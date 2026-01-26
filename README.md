@@ -5,9 +5,10 @@ Stream tmux sessions to your browser. Access your terminal from any device.
 ## Quick Start
 
 ```bash
-./install.sh       # Install dependencies
-./compile.sh       # Build
-./build/oatmux     # Run (interactive session picker)
+./install.sh         # Install dependencies
+./compile.sh         # Build
+./compile.sh install # Install to /usr/local/bin
+./build/oatmux       # Run (interactive session picker)
 ```
 
 Open `http://localhost:8080` in your browser.
@@ -37,6 +38,7 @@ oatmux -l                 # List sessions
 ## Controls
 
 **Session Picker:**
+
 - `↑/↓` or `j/k` - Navigate
 - `Enter` or `1-9` - Select
 - `q` or `Esc` - Quit
