@@ -24,13 +24,14 @@ static const char *HTML_PAGE =
 "<head>\n"
 "    <meta charset=\"UTF-8\">\n"
 "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\">\n"
-"    <title>tmux Web Terminal</title>\n"
+"    <title>oatmux</title>\n"
 "    <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css\">\n"
 "    <style>\n"
 "        * { margin: 0; padding: 0; box-sizing: border-box; }\n"
 "        html, body { height: 100%%; width: 100%%; background: #000; overflow: hidden; }\n"
-"        #terminal { height: 100%%; width: 100%%; }\n"
-"        #status { position: fixed; top: 5px; right: 10px; color: #0f0; font-family: monospace; font-size: 12px; z-index: 1000; }\n"
+"        #terminal { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }\n"
+"        #terminal .xterm { height: 100%%; }\n"
+"        #status { position: fixed; top: 8px; right: 12px; color: #0f0; font-family: monospace; font-size: 12px; z-index: 9999; background: rgba(0,0,0,0.8); padding: 3px 10px; border-radius: 4px; }\n"
 "        .disconnected { color: #f00 !important; }\n"
 "    </style>\n"
 "</head>\n"
@@ -125,6 +126,7 @@ typedef struct {
     int websocket_ready;
     pthread_t thread;
     char *session_name;
+    char client_ip[INET_ADDRSTRLEN];
 } client_t;
 
 static void signal_handler(int sig) {
@@ -246,6 +248,7 @@ static void *client_handler(void *arg) {
     }
 
     client->websocket_ready = 1;
+    printf("[WS] %s connected\n", client->client_ip);
 
     // Create terminal attached to tmux session
     if (terminal_create(&client->terminal, client->session_name) < 0) {
@@ -344,6 +347,9 @@ static void *client_handler(void *arg) {
     }
 
 cleanup:
+    if (client->websocket_ready) {
+        printf("[WS] %s disconnected\n", client->client_ip);
+    }
     terminal_close(&client->terminal);
     close(client->socket_fd);
     free(client->session_name);
@@ -443,10 +449,6 @@ int server_start(server_config_t *config) {
             continue;
         }
 
-        char client_ip[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
-        printf("Connection from %s:%d\n", client_ip, ntohs(client_addr.sin_port));
-
         // Create client structure
         client_t *client = calloc(1, sizeof(client_t));
         if (!client) {
@@ -457,6 +459,7 @@ int server_start(server_config_t *config) {
         client->socket_fd = client_fd;
         client->session_name = strdup(config->tmux_session);
         client->websocket_ready = 0;
+        inet_ntop(AF_INET, &client_addr.sin_addr, client->client_ip, sizeof(client->client_ip));
 
         // Spawn handler thread
         if (pthread_create(&client->thread, NULL, client_handler, client) != 0) {
