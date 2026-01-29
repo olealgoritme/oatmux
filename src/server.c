@@ -62,11 +62,12 @@ static const char *HTML_PAGE =
 "\n"
 "        function connect() {\n"
 "            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';\n"
-"            ws = new WebSocket(protocol + '//' + location.host + '/ws');\n"
+"            const writemode = '%s';\n"
+"            ws = new WebSocket(protocol + '//' + location.host + '/ws?writemode=' + writemode);\n"
 "            ws.binaryType = 'arraybuffer';\n"
 "\n"
 "            ws.onopen = () => {\n"
-"                status.textContent = 'Connected';\n"
+"                status.textContent = writemode === 'true' ? 'Connected' : 'Connected (Read-only)';\n"
 "                status.classList.remove('disconnected');\n"
 "                // Send initial size\n"
 "                const size = { type: 'resize', cols: term.cols, rows: term.rows };\n"
@@ -93,11 +94,13 @@ static const char *HTML_PAGE =
 "            };\n"
 "        }\n"
 "\n"
-"        term.onData((data) => {\n"
-"            if (ws && ws.readyState === WebSocket.OPEN) {\n"
-"                ws.send(data);\n"
-"            }\n"
-"        });\n"
+"        if (writemode === 'true') {\n"
+"            term.onData((data) => {\n"
+"                if (ws && ws.readyState === WebSocket.OPEN) {\n"
+"                    ws.send(data);\n"
+"                }\n"
+"            });\n"
+"        }\n"
 "\n"
 "        window.addEventListener('resize', () => {\n"
 "            fitAddon.fit();\n"
@@ -124,6 +127,7 @@ typedef struct {
     int socket_fd;
     terminal_t terminal;
     int websocket_ready;
+    int read_only;
     pthread_t thread;
     char *session_name;
     char client_ip[INET_ADDRSTRLEN];
@@ -139,7 +143,7 @@ static void signal_handler(int sig) {
 }
 
 // Parse HTTP headers and extract WebSocket key
-static int parse_http_request(const char *request, char *ws_key, size_t ws_key_size, char *path, size_t path_size) {
+static int parse_http_request(const char *request, char *ws_key, size_t ws_key_size, char *path, size_t path_size, char *query, size_t query_size) {
     // Extract path
     const char *path_start = strchr(request, ' ');
     if (!path_start) return -1;
@@ -152,6 +156,17 @@ static int parse_http_request(const char *request, char *ws_key, size_t ws_key_s
     if (path_len >= path_size) path_len = path_size - 1;
     strncpy(path, path_start, path_len);
     path[path_len] = '\0';
+
+    // Split path at '?' to separate query string
+    query[0] = '\0';
+    char *qmark = strchr(path, '?');
+    if (qmark) {
+        size_t qlen = strlen(qmark + 1);
+        if (qlen >= query_size) qlen = query_size - 1;
+        strncpy(query, qmark + 1, qlen);
+        query[qlen] = '\0';
+        *qmark = '\0'; // Truncate path at '?'
+    }
 
     // Find Sec-WebSocket-Key header
     const char *key_header = strstr(request, "Sec-WebSocket-Key: ");
@@ -220,16 +235,30 @@ static void *client_handler(void *arg) {
 
     char ws_key[256] = {0};
     char path[256] = {0};
-    int is_websocket = parse_http_request(buffer, ws_key, sizeof(ws_key), path, sizeof(path));
+    char query[256] = {0};
+    int is_websocket = parse_http_request(buffer, ws_key, sizeof(ws_key), path, sizeof(path), query, sizeof(query));
 
     if (is_websocket < 0) {
         goto cleanup;
     }
 
+    // Determine writemode from query string (default: true)
+    int writemode = 1;
+    {
+        const char *wm = strstr(query, "writemode=");
+        if (wm) {
+            wm += 10;
+            if (strncmp(wm, "false", 5) == 0) writemode = 0;
+        }
+    }
+
     // Handle regular HTTP request
     if (is_websocket == 0 || strlen(ws_key) == 0) {
         if (strcmp(path, "/") == 0 || strcmp(path, "/index.html") == 0) {
-            send_http_response(client->socket_fd, 200, "OK", "text/html", HTML_PAGE, strlen(HTML_PAGE));
+            // Inject writemode into the page
+            char page_buf[8192];
+            snprintf(page_buf, sizeof(page_buf), HTML_PAGE, writemode ? "true" : "false");
+            send_http_response(client->socket_fd, 200, "OK", "text/html", page_buf, strlen(page_buf));
         } else {
             const char *not_found = "404 Not Found";
             send_http_response(client->socket_fd, 404, "Not Found", "text/plain", not_found, strlen(not_found));
@@ -248,7 +277,9 @@ static void *client_handler(void *arg) {
     }
 
     client->websocket_ready = 1;
-    printf("[WS] %s connected\n", client->client_ip);
+    client->read_only = writemode ? 0 : 1;
+    printf("[WS] %s connected%s\n", client->client_ip,
+           client->read_only ? " (read-only)" : "");
 
     // Create terminal attached to tmux session
     if (terminal_create(&client->terminal, client->session_name) < 0) {
@@ -306,12 +337,12 @@ static void *client_handler(void *arg) {
                                        "{\"type\":\"resize\",\"cols\":%d,\"rows\":%d}",
                                        &cols, &rows) == 2) {
                                 terminal_resize(&client->terminal, cols, rows);
-                            } else {
+                            } else if (!client->read_only) {
                                 // Regular input
                                 terminal_write(&client->terminal,
                                              (char *)frame.payload, frame.payload_len);
                             }
-                        } else if (frame.payload_len > 0) {
+                        } else if (frame.payload_len > 0 && !client->read_only) {
                             terminal_write(&client->terminal,
                                          (char *)frame.payload, frame.payload_len);
                         }
